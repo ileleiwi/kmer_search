@@ -6,7 +6,6 @@ use std::str::FromStr;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fs::File;
-use std::fs::create_dir_all;
 use std::io::Write;
 use std::io::Error;
 use std::path::PathBuf;
@@ -135,11 +134,11 @@ let unique2: Vec<String> = kmer_keys2.difference(&kmer_keys1).cloned().collect()
 
 let mut unique_file = File::create(unique_out_path).unwrap();
 writeln!(unique_file, "kmer\tfasta1_count\tfasta2_count").unwrap();
-match find_unique_kmers(&unique1, &kmer_counts1, &mut unique_file) {
+match find_unique_kmers(&unique1, &kmer_counts1, &mut unique_file, true) {
     Ok(()) => println!("Unique kmers from fasta1 written to file"),
     Err(e) => eprintln!("Error writing unique kmers to file: {}", e),
 }
-match find_unique_kmers(&unique2, &kmer_counts2, &mut unique_file) {
+match find_unique_kmers(&unique2, &kmer_counts2, &mut unique_file, false) {
     Ok(()) => println!("Unique kmers from fasta2 written to file"),
     Err(e) => eprintln!("Error writing unique kmers to file: {}", e),
 }
@@ -175,10 +174,10 @@ fn count_kmers(fasta_file: &str, k: usize) -> HashMap<String, usize> {
     kmer_counts
 }
 
-fn find_unique_kmers(kmer_vec: &Vec<String>, kmer_counts: &HashMap<String, usize>, file: &mut File) -> Result<(), Error> {
+fn find_unique_kmers(kmer_vec: &Vec<String>, kmer_counts: &HashMap<String, usize>, file: &mut File, fasta_1: bool) -> Result<(), Error> {
     for kmer in kmer_vec {
         let count = kmer_counts[kmer];
-        match writeln!(file, "{}\t{}\t{}", kmer, 0, count) {
+        match writeln!(file, "{}\t{}\t{}", kmer, if fasta_1 { count } else { 0 }, if fasta_1 { 0 } else { count }) {
             Ok(_) => {},
             Err(e) => {
                 return Err(e);
