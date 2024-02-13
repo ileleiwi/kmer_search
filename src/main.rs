@@ -8,7 +8,8 @@ use std::collections::HashSet;
 use std::fs::File;
 use std::io::Write;
 use std::io::Error;
-use std::path::PathBuf;
+use std::path::{PathBuf, Path};
+
 
 
 fn main() {
@@ -99,10 +100,13 @@ let kmer_size = match usize::from_str(kmer_size_str) {
     }
 };
 
-// Count k-mers in first FASTA file
-let kmer_counts1 = count_kmers(&fasta_file1, kmer_size);
-// Count k-mers in second FASTA file  
-let kmer_counts2 = count_kmers(&fasta_file2, kmer_size);
+// Make FastaSeq structs from FASTA files
+let fast1: FastaSeq = fasta_stats(&fasta_file1);
+let fast2: FastaSeq = fasta_stats(&fasta_file2);
+
+// Count k-mers 
+let kmer_counts1 = count_kmers(&fast1.sequence, kmer_size);
+let kmer_counts2 = count_kmers(&fast2.sequence, kmer_size);
 
 // Find intersection of k-mers
 // Clone the key sets
@@ -145,9 +149,25 @@ match find_unique_kmers(&unique2, &kmer_counts2, &mut unique_file, false) {
 
 }
 
-fn count_kmers(fasta_file: &str, k: usize) -> HashMap<String, usize> {
+fn count_kmers(fasta_seq: &str, k: usize) -> HashMap<String, usize> {
  
-    // Create a FASTA reader
+    // Create k-mer iterator
+    let kmer_iter = hash_kmers(fasta_seq.as_bytes(), k);
+
+    // Create HashMap to store k-mer counts instead of k-mer positions
+    let mut kmer_counts: HashMap<String, usize> = HashMap::new();
+
+    // Iterate over k-mers
+    for (kmer, count_vec) in kmer_iter {
+        let kmer_string= String::from_utf8_lossy(kmer).to_string();
+        let entry = kmer_counts.entry(kmer_string).or_insert(0);
+        *entry += count_vec.len();
+    }
+
+    kmer_counts
+}
+
+fn seq_string_from_fasta(fasta_file: &str) -> String {
     let reader = match fasta::Reader::from_file(fasta_file){
         Ok(f) => f,
         Err(e) => {
@@ -156,22 +176,13 @@ fn count_kmers(fasta_file: &str, k: usize) -> HashMap<String, usize> {
         }
 
     };
-
-    // Create HashMap to store k-mer counts
-    let mut kmer_counts: HashMap<String, usize> = HashMap::new();
-
-    // Iterate over the records in the FASTA file
+    let mut fasta_sequence = String::new();
     for record in reader.records() {
-        let seq = record.expect("Error reading sequence from FASTA1 file").seq().to_owned();
-        let kmer_iter = hash_kmers(&seq, k);
-        for (kmer, count_vec) in kmer_iter {
-            let kmer_string= String::from_utf8_lossy(kmer).to_string();
-            let entry = kmer_counts.entry(kmer_string).or_insert(0);
-            *entry += count_vec.len();
-        }
+        let seq = record.expect("Error reading sequence record").seq().to_owned();
+        let seq_string = String::from_utf8_lossy(&seq);
+        fasta_sequence.push_str(&seq_string);
     }
-
-    kmer_counts
+    return fasta_sequence;
 }
 
 fn find_unique_kmers(kmer_vec: &Vec<String>, kmer_counts: &HashMap<String, usize>, file: &mut File, fasta_1: bool) -> Result<(), Error> {
@@ -185,4 +196,46 @@ fn find_unique_kmers(kmer_vec: &Vec<String>, kmer_counts: &HashMap<String, usize
         };
     }
     Ok(())
+}
+
+struct FastaSeq {
+    file_name: String,
+    sequence: String,
+    bases: usize,
+    gc: usize,
+}
+
+fn fasta_stats (fasta_file: &str) -> FastaSeq {
+    let base_name = match Path::new(fasta_file)
+        .file_stem()
+        .and_then(|stem| stem.to_str())
+    {
+        Some(stem) if stem.ends_with(".fa") => stem.strip_suffix(".fa").unwrap_or(stem),
+        Some(stem) if stem.ends_with(".fna") => stem.strip_suffix(".fna").unwrap_or(stem),
+        Some(stem) if stem.ends_with(".fasta") => stem.strip_suffix(".fasta").unwrap_or(stem),
+        Some(stem) => stem,
+        None => fasta_file, // If file_name is not valid, return the original file_name
+    };
+
+    let seq = seq_string_from_fasta(fasta_file);
+    let mut bases = 0;
+    let mut gc = 0;
+    for c in seq.chars() {
+        match c {
+            'A' | 'C' | 'G' | 'T' => {
+                bases += 1;
+                if c == 'C' || c == 'G' {
+                    gc += 1;
+                }
+            },
+            _ => {},
+        }
+    }
+
+    FastaSeq {
+        file_name: base_name.to_string(),
+        sequence: seq,
+        bases: bases,
+        gc: gc,
+    }
 }
