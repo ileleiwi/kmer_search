@@ -6,13 +6,17 @@ use std::fs::File;
 use std::io::Error;
 use std::io::Write;
 
+//TODO: add an revcomp utility to count kmers that works on odd kmer lengths
 pub struct FastaSeq {
     pub file_name: String,
     pub sequence: String,
+    pub rev_comp: String,
+    pub yr_seq: String,
+    pub rev_comp_yr: String,
     pub bases: usize,
     pub gc: usize,
 }
-pub fn fasta_stats (fasta_file: &str) -> FastaSeq {
+pub fn fasta_seq_construct (fasta_file: &str) -> FastaSeq {
     let base_name = match Path::new(fasta_file)
         .file_stem()
         .and_then(|stem| stem.to_str())
@@ -42,6 +46,9 @@ pub fn fasta_stats (fasta_file: &str) -> FastaSeq {
     FastaSeq {
         file_name: base_name.to_string(),
         sequence: seq,
+        rev_comp: revcomp_seq(&seq),
+        yr_seq: seq_to_yr(&seq),
+        rev_comp_yr: revcomp_seq(&seq_to_yr(&seq)),
         bases: bases,
         gc: gc,
     }
@@ -65,10 +72,38 @@ pub fn seq_string_from_fasta(fasta_file: &str) -> String {
     return fasta_sequence;
 }
 
-pub fn count_kmers(fasta_seq: &str, k: usize) -> HashMap<String, usize> {
+fn revcomp_seq(seq: &str) -> String {
+    let mut revcomp = String::new();
+    for ch in seq.chars().rev() {
+        match ch {
+            'A' => revcomp.push('T'),
+            'C' => revcomp.push('G'),
+            'G' => revcomp.push('C'),
+            'T' => revcomp.push('A'),
+            'Y' => revcomp.push('R'),
+            'R' => revcomp.push('Y'),
+            _ => revcomp.push(ch),
+        }
+    }
+    revcomp
+}
+
+pub fn seq_to_yr(seq: &String) -> String {
+    let mut yr_seq = String::new();
+    for ch in seq.chars().map(|c| c.to_ascii_uppercase()) {
+       match ch {
+           'A' | 'G' => yr_seq.push('R'),
+           'C' | 'T' => yr_seq.push('Y'),
+           _ => yr_seq.push('-'),
+       }
+    }
+    yr_seq
+}
+
+pub fn count_kmers(fasta_seq: &str, k: &usize) -> HashMap<String, usize> {
  
     // Create k-mer iterator
-    let kmer_iter = hash_kmers(fasta_seq.as_bytes(), k);
+    let kmer_iter = hash_kmers(fasta_seq.as_bytes(), *k);
 
     // Create HashMap to store k-mer counts instead of k-mer positions
     let mut kmer_counts: HashMap<String, usize> = HashMap::new();

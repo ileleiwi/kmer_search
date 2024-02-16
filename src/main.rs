@@ -1,63 +1,40 @@
 use clap::{Command, Arg};
+use std::f32::consts::E;
 use std::fs;
 use std::fs::File;
+use std::hash::Hash;
 use std::str::FromStr;
 use std::collections::HashSet;
+use std::collections::HashMap;
 use std::io::Write;
 use std::path::PathBuf;
 
 pub mod sequence_utils;
 
+const KMER_SIZES: [usize; 5] = [1, 2, 3, 4, 5];
+const RMER_SIZES: [usize; 5] = [6, 7, 8, 9, 10];
+const EXTENSIONS: [&str; 3] = [".fa", ".fasta", ".fna"];
+
 fn main() {
     // Get command-line arguments
     let matches: clap::ArgMatches = Command::new("kmer_search")
-    .arg(Arg::new("fasta1")
-            .short('1')
-            .long("fasta1")
-            .value_name("FILE")
-            .help("Path to first input FASTA file")
+    .arg(Arg::new("input_dir")
+            .short('i')
+            .long("input_dir")
+            .value_name("DIRECTORY")
+            .help("Path to directory of input FASTA files")
             .required(true))
-    .arg(Arg::new("fasta2")
-        .short('2')
-        .long("fasta2")
-        .value_name("FILE")
-        .help("Path to second input FASTA file")
-        .required(true))
-    .arg(Arg::new("shared_out")
-        .short('s')
-        .long("shared_out")
-        .value_name("FILE")
-        .help("Name of shared output file")
-        .required(false))
-    .arg(Arg::new("unique_out")
-        .short('u')
-        .long("unique_out")
-        .value_name("FILE")
-        .help("Name of unique output file")
-        .required(false))
     .arg(Arg::new("output_dir")
         .short('o')
         .long("output_dir")
         .value_name("DIRECTORY")
         .help("Output directory")
         .required(false))
-    .arg(Arg::new("kmer_size")
-        .short('k')
-        .long("kmer_size")
-        .value_name("SIZE")
-        .help("k-mer size")
-        .required(true))
     .get_matches();
 
-    
-let fasta_file1 = matches.get_one::<String>("fasta1").unwrap_or_else(|| {
-    eprintln!("Error: fasta1 file not provided");
-    std::process::exit(1);
-});
-let fasta_file2 = matches.get_one::<String>("fasta2").unwrap_or_else(|| {
-    eprintln!("Error: fasta2 file not provided");
-    std::process::exit(1);
-});
+// Get input directory
+let input_dir = matches.get_one::<String>("input_dir").unwrap();
+
 // Use default output file names if not provided
 let default_output_dir = String::from("./kmer_search_output");
 let output_dir = matches
@@ -70,38 +47,17 @@ match fs::create_dir_all(&output_dir) {
     Err(e) => {println!("Error creating output directory: {}", e);},
 }
 
-let default_shared_out = String::from("shared.tsv");
-let shared_out = matches
-    .get_one::<String>("shared_out")
-    .unwrap_or(&default_shared_out);
-let shared_out_path = output_dir.join(shared_out);
-
-let default_unique_out = String::from("unique.tsv");
-let unique_out = matches
-    .get_one::<String>("unique_out")
-    .unwrap_or(&default_unique_out);
-let unique_out_path = output_dir.join(unique_out);
-
-
-// Retrieve the value of the kmer_size argument
-let kmer_size_str = matches.get_one::<String>("kmer_size").unwrap();
-
-// Parse the value to usize
-let kmer_size = match usize::from_str(kmer_size_str) {
-    Ok(size) => size,
-    Err(_) => {
-        eprintln!("Error: Invalid k-mer size provided.");
-        // Handle the error appropriately
-        return;
-    }
-};
+// Get list of FASTA files in input directory
+process_files_with_extensions(&input_dir);
 
 // Make FastaSeq structs from FASTA files
-let fast1: sequence_utils::FastaSeq = sequence_utils::fasta_stats(&fasta_file1);
-let fast2: sequence_utils::FastaSeq = sequence_utils::fasta_stats(&fasta_file2);
 
-// Count k-mers 
-let kmer_counts1 = sequence_utils::count_kmers(&fast1.sequence, kmer_size);
+let fast2: sequence_utils::FastaSeq = sequence_utils::fasta_seq_construct(&fasta_file2);
+
+
+
+
+
 let kmer_counts2 = sequence_utils::count_kmers(&fast2.sequence, kmer_size);
 
 // Find intersection of k-mers
@@ -144,6 +100,112 @@ match sequence_utils::find_unique_kmers(&unique2, &kmer_counts2, &mut unique_fil
 }
 
 }
+
+
+fn process_files_with_extensions(folder_path: &str) -> Vec<HashMap<String, usize>> {
+    // Read the contents of the directory
+    let dir = match fs::read_dir(folder_path){
+        Ok(dir) => dir,
+        Err(e) => {
+            eprintln!("Error reading directory: {}", e);
+            std::process::exit(1);
+        }   
+    };
+
+    // Iterate over the files in the directory
+    let mut all_file_hashes: Vec<HashMap<String, usize>> = Vec::new();
+    for f in dir {
+        let f = match f {
+            Ok(f) => f,
+            Err(e) => {
+                eprintln!("Error reading file: {}", e);
+                continue;
+            }
+        };
+        let file_path = f.path();
+        if check_extension(file_path, &EXTENSIONS){
+            let fasta: sequence_utils::FastaSeq = sequence_utils::fasta_seq_construct(&file_path.to_str().unwrap());
+            // Count k-mers 
+            let mut kmer_counts: Vec<HashMap<String, usize>> = Vec::new();
+            let mut rmer_counts: Vec<HashMap<String, usize>> = Vec::new();
+
+            for (index, k_size) in KMER_SIZES.iter().enumerate() {
+                let rev_idx = index + 5;
+                kmer_counts[index] = sequence_utils::count_kmers(&fasta.sequence, k_size);
+                kmer_counts[rev_idx] = sequence_utils::count_kmers(&fasta.rev_comp, k_size);                
+            }
+            
+            for (index, r_size) in RMER_SIZES.iter().enumerate() {
+                let rev_idx = index + 5;
+                rmer_counts[index] = sequence_utils::count_kmers(&fasta.yr_seq, r_size);
+                rmer_counts[rev_idx] = sequence_utils::count_kmers(&fasta.rev_comp_yr, r_size);                 
+            }
+            let mut kmer_hashes = collapse_hashes(&kmer_counts);
+            let rmer_hashes = collapse_hashes(&rmer_counts);
+           
+            let all_file_hashes = kmer_hashes.extend(rmer_hashes);
+
+        };
+    }
+    all_file_hashes
+}
+
+fn check_extension(file_path: PathBuf, extensions: &[&str]) -> bool {
+    
+    let ext = file_path.extension().unwrap(); // Get extension
+    let ext_str = ext.to_string_lossy().to_lowercase(); // Convert to lowercase for case insensitivity
+        
+    if extensions.iter().any(|&e| e == ext_str) {
+        println!("Processing file: {:?}", file_path);
+        true
+    }else{
+        false
+    }
+}
+
+fn collapse_hashes(mer_hash_vec: &Vec<HashMap<String, usize>>) -> HashMap<String, usize> {
+    let mut collapsed_hash: HashMap<String, usize> = HashMap::new();
+    for hash in mer_hash_vec {
+        for (id, count) in hash {
+            let mer = collapsed_hash.entry(id.to_string()).or_insert(0);
+            *mer += count;
+        }
+    } 
+    collapsed_hash
+}
+
+fn write_tsv(vec_of_hashmaps: &Vec<HashMap<String, usize>>, filename: &str) -> Result<(), std::io::Error> {
+    // Collect all unique keys
+    let mut unique_keys: HashSet<&String> = HashSet::new();
+    for hashmap in vec_of_hashmaps {
+        for key in hashmap.keys() {
+            unique_keys.insert(key);
+        }
+    }
+
+    // Open the file for writing
+    let mut file = File::create(filename)?;
+
+    // Write to the file
+    // Write header
+
+    //todo write function that saves fasta file names in a vector and use that as headers for the output tsv
+    writeln!(file, "{}", unique_keys.iter().map(|k| *k).collect::<Vec<&String>>().join("\t"))?;
+
+    // Write data
+    for hashmap in vec_of_hashmaps {
+        let mut row_values = Vec::new();
+        for key in &unique_keys {
+            let value = hashmap.get(*key).unwrap_or(&0); // If key not found, default to 0
+            row_values.push(value.to_string());
+        }
+        writeln!(file, "{}", row_values.join("\t"))?;
+    }
+
+    Ok(())
+}
+
+
 
 
 
