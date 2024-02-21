@@ -6,7 +6,6 @@ use std::io::Error;
 use std::io::Write;
 use std::path::Path;
 
-//TODO: add an revcomp utility to count kmers that works on odd kmer lengths
 pub struct FastaSeq {
     pub file_name: String,
     pub sequence: String,
