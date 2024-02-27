@@ -1,5 +1,4 @@
 use clap::{Arg, Command};
-use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 pub mod file_utils;
@@ -52,21 +51,10 @@ fn main() {
     // Process files and write output
     let mer_hash_vec = file_utils::process_files_with_extensions(input_dir);
     let column_names = file_utils::collect_headers(input_dir);
-    match file_utils::write_tsv(&mer_hash_vec, &full_out_path, &column_names) {
+    match file_utils::write_mer_tsv(&mer_hash_vec, &full_out_path, &column_names) {
         Ok(()) => println!("TSV file successfully written"),
         Err(err) => eprintln!("Error writing TSV file: {}", err),
     }
-}
-
-fn collapse_hashes(mer_hash_vec: &Vec<HashMap<String, usize>>) -> HashMap<String, usize> {
-    let mut collapsed_hash: HashMap<String, usize> = HashMap::new();
-    for hash in mer_hash_vec {
-        for (id, count) in hash {
-            let mer = collapsed_hash.entry(id.to_string()).or_insert(0);
-            *mer += count;
-        }
-    }
-    collapsed_hash
 }
 
 #[cfg(test)]

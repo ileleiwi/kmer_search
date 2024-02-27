@@ -117,20 +117,34 @@ pub fn seq_string_from_fasta(fasta_file: &str) -> String {
 }
 
 pub fn count_kmers(fasta_seq: &str, k: &usize) -> HashMap<String, usize> {
-    // Create k-mer iterator
-    let kmer_iter = hash_kmers(fasta_seq.as_bytes(), *k);
+    // Create k-mer hashmap
+    let kmer_hash = hash_kmers(fasta_seq.as_bytes(), *k);
 
     // Create HashMap to store k-mer counts instead of k-mer positions
     let mut kmer_counts: HashMap<String, usize> = HashMap::new();
 
     // Iterate over k-mers
-    for (kmer, count_vec) in kmer_iter {
+    for (kmer, count_vec) in kmer_hash {
         let kmer_string = String::from_utf8_lossy(kmer).to_string();
         let entry = kmer_counts.entry(kmer_string).or_insert(0);
         *entry += count_vec.len();
     }
 
     kmer_counts
+}
+
+// Normalize kmer counts by square root of sequence length
+pub fn normalize_kmers(
+    kmer_counts: &HashMap<String, usize>,
+    seq_len: &usize,
+) -> HashMap<String, f64> {
+    let mut normalized_counts: HashMap<String, f64> = HashMap::new();
+    let seq_len = *seq_len as f64;
+    for (kmer, count) in kmer_counts {
+        let norm_count = *count as f64 / seq_len.sqrt();
+        normalized_counts.insert(kmer.to_string(), norm_count);
+    }
+    normalized_counts
 }
 
 pub fn find_unique_kmers(

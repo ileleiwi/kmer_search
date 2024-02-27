@@ -1,4 +1,8 @@
+use crate::sequence_utils;
+use crate::sequence_utils::normalize_kmers;
 use crate::EXTENSIONS;
+use crate::KMER_SIZES;
+use crate::RMER_SIZES;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fs;
@@ -35,7 +39,6 @@ pub fn collect_headers(folder_path: &String) -> Vec<String> {
             }
         };
         let file_path = f.path();
-        println!("Processing file: {:?}", file_path);
 
         if check_extension(&file_path, &EXTENSIONS) {
             let file_name = file_path.file_name().unwrap().to_str().unwrap();
@@ -45,7 +48,17 @@ pub fn collect_headers(folder_path: &String) -> Vec<String> {
     file_names
 }
 
-pub fn process_files_with_extensions(folder_path: &str) -> Vec<HashMap<String, usize>> {
+pub fn collapse_hashes(mer_hash_vec: &Vec<HashMap<String, usize>>) -> HashMap<String, usize> {
+    let mut collapsed_hash: HashMap<String, usize> = HashMap::new();
+    for hash in mer_hash_vec {
+        for (id, count) in hash {
+            let mer = collapsed_hash.entry(id.to_string()).or_insert(0);
+            *mer += count;
+        }
+    }
+    collapsed_hash
+}
+pub fn process_files_with_extensions(folder_path: &str) -> Vec<HashMap<String, f64>> {
     // Read the contents of the directory
     let dir = match fs::read_dir(folder_path) {
         Ok(dir) => dir,
@@ -56,7 +69,7 @@ pub fn process_files_with_extensions(folder_path: &str) -> Vec<HashMap<String, u
     };
 
     // Iterate over the files in the directory
-    let mut all_file_hashes: Vec<HashMap<String, usize>> = Vec::new();
+    let mut all_file_hashes: Vec<HashMap<String, f64>> = Vec::new();
     for f in dir {
         let f = match f {
             Ok(f) => f,
@@ -69,6 +82,8 @@ pub fn process_files_with_extensions(folder_path: &str) -> Vec<HashMap<String, u
         if check_extension(&file_path, &EXTENSIONS) {
             let fasta: sequence_utils::FastaSeq =
                 sequence_utils::fasta_seq_construct(file_path.to_str().unwrap());
+
+            println!("Processing file: {:?}", file_path);
 
             // Count k-mers
             let mut kmer_counts: HashMap<String, usize> = HashMap::new();
@@ -104,14 +119,20 @@ pub fn process_files_with_extensions(folder_path: &str) -> Vec<HashMap<String, u
             ];
 
             let collapsed_combined_kr_hashes = collapse_hashes(&combined_kr_hashes);
-            all_file_hashes.push(collapsed_combined_kr_hashes);
+            let collapsed_combined_kr_hashes_norm =
+                normalize_kmers(&collapsed_combined_kr_hashes, &fasta.bases);
+
+            all_file_hashes.push(collapsed_combined_kr_hashes_norm);
         };
     }
     all_file_hashes
 }
 
-pub fn write_tsv(
-    vec_of_hashmaps: &Vec<HashMap<String, usize>>,
+// TODO: Write a function to write the statistics to a TSV file
+fn write_stats_tsv() {}
+
+pub fn write_mer_tsv(
+    vec_of_hashmaps: &Vec<HashMap<String, f64>>,
     out_file: &PathBuf,
     file_names: &[String],
 ) -> Result<(), std::io::Error> {
@@ -140,7 +161,7 @@ pub fn write_tsv(
         row_values.clear();
         row_values.push(key.to_string());
         for hashmap in vec_of_hashmaps {
-            let value = hashmap.get(*key).unwrap_or(&0).to_string(); // If key not found, default to 0
+            let value = hashmap.get(*key).unwrap_or(&0.0).to_string(); // If key not found, default to 0
             row_values.push(value);
         }
         writeln!(file, "{}", row_values.join("\t"))?;
