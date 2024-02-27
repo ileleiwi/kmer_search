@@ -47,28 +47,19 @@ fn main() {
     }
 
     let full_out_path = output_dir.join("mer_counts_output.tsv");
+    let full_out_path_stats = output_dir.join("sequence_stats.tsv");
 
     // Process files and write output
-    let mer_hash_vec = file_utils::process_files_with_extensions(input_dir);
-    let column_names = file_utils::collect_headers(input_dir);
-    match file_utils::write_mer_tsv(&mer_hash_vec, &full_out_path, &column_names) {
-        Ok(()) => println!("TSV file successfully written"),
-        Err(err) => eprintln!("Error writing TSV file: {}", err),
+    let fasta_objects = file_utils::instantiate_fastaseq_objects(input_dir);
+    let mer_hash_vec = file_utils::process_files_with_extensions(&fasta_objects);
+    let column_names = file_utils::collect_headers(&fasta_objects);
+
+    match file_utils::write_stats_tsv(&fasta_objects, &full_out_path_stats) {
+        Ok(()) => println!("Stats file successfully written"),
+        Err(err) => eprintln!("Error writing Counts file: {}", err),
     }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_collect_headers() {
-        let test_dir = "/Users/leleiwi1/Desktop/LLNL_postdoc/kmer_tool_16S/test_input";
-        let file_names = file_utils::collect_headers(&test_dir.to_string());
-        assert_eq!(file_names.len(), 4);
-        assert_eq!(file_names[0], "t.fasta");
-        assert_eq!(file_names[1], "t.fna");
-        assert_eq!(file_names[2], "test1.fa");
-        assert_eq!(file_names[3], "test2.fa");
+    match file_utils::write_mer_tsv(&mer_hash_vec, &full_out_path, &column_names) {
+        Ok(()) => println!("Counts file successfully written"),
+        Err(err) => eprintln!("Error writing Counts file: {}", err),
     }
 }
